@@ -151,7 +151,7 @@ public class AnimatedEmojiEffect {
                         set = MediaDataController.getInstance(currentAccount).getStickerSetByEmojiOrName(packName);
                     }
                 }
-                if (set != null) {
+                if (set != null && set.documents != null && !set.documents.isEmpty()) {
                     imageSet = true;
                     if (animationIndex < 0) {
                         animationIndex = Math.abs(Utilities.fastRandom.nextInt() % set.documents.size());
