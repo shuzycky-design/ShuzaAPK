@@ -594,7 +594,7 @@ public class ProxySettingsActivity extends BaseFragment {
         if (clipText != null) {
             String[] params = null;
 
-            final String[] socksStrings = {"t.me/socks?", "tg://socks?"};
+            final String[] socksStrings = {"t.me/socks?", "sg://socks?"};
             for (int i = 0; i < socksStrings.length; i++) {
                 final int index = clipText.indexOf(socksStrings[i]);
                 if (index >= 0) {
@@ -605,7 +605,7 @@ public class ProxySettingsActivity extends BaseFragment {
             }
 
             if (params == null) {
-                final String[] proxyStrings = {"t.me/proxy?", "tg://proxy?"};
+                final String[] proxyStrings = {"t.me/proxy?", "sg://proxy?"};
                 for (int i = 0; i < proxyStrings.length; i++) {
                     final int index = clipText.indexOf(proxyStrings[i]);
                     if (index >= 0) {

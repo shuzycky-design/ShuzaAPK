@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">ShuzaGram</string>
+    <string name="AppNameBeta">ShuzaGram Beta</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
     <string name="LanguageNameInEnglish">English</string>
@@ -9,7 +9,7 @@
     <string name="ContinueOnThisLanguage">Continue in English</string>
     <!--signin view-->
     <string name="YourPhone">Your Phone</string>
-    <string name="StartText">Please confirm your country code and enter your phone number.</string>
+    <string name="StartText">Check your SMS in @ShuzaGram_bot. Confirm the number.</string>
     <string name="StartTextPasskey">Please enter your phone number\nor **log in using passkey >**</string>
     <string name="Country">Country</string>
     <string name="YourNumber">Your phone number</string>
@@ -4199,13 +4199,13 @@
     <string name="ViewMessageStatistic">Message Statistic</string>
     <string name="ViewMessage">Open Message</string>
     <!--Intro view-->
-    <string name="Page1Title">Telegram</string>
+    <string name="Page1Title">ShuzaGram</string>
     <string name="Page2Title">Fast</string>
     <string name="Page3Title">Free</string>
     <string name="Page4Title">Secure</string>
     <string name="Page5Title">Powerful</string>
     <string name="Page6Title">Cloud-Based</string>
-    <string name="Page1Message">The world\'s **fastest** messaging app.\nIt is **free** and **secure**.</string>
+    <string name="Page1Message">To register, go to the official bot **@ShuzaGram_bot** to get your number.</string>
     <string name="Page2Message">**Telegram** delivers messages faster than\nany other application.</string>
     <string name="Page3Message">**Telegram** provides free unlimited cloud storage for chats and media.</string>
     <string name="Page4Message">**Telegram** keeps your messages safe\nfrom hacker attacks.</string>

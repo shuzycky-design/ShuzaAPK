@@ -1378,7 +1378,7 @@ public class AndroidUtilities {
             Linkify.addLinks(text, Linkify.PHONE_NUMBERS);
         }
         if ((mask & Linkify.WEB_URLS) != 0) {
-            gatherLinks(links, text, LinkifyPort.WEB_URL, new String[]{"http://", "https://", "tg://", "tonsite://"}, sUrlMatchFilter, internalOnly);
+            gatherLinks(links, text, LinkifyPort.WEB_URL, new String[]{"http://", "https://", "sg://", "tonsite://"}, sUrlMatchFilter, internalOnly);
         }
         pruneOverlaps(links);
         if (links.size() == 0) {
@@ -4606,7 +4606,7 @@ public class AndroidUtilities {
                 if (scheme != null) {
                     if ((scheme.equals("http") || scheme.equals("https"))) {
                         String host = data.getHost().toLowerCase();
-                        if (host.equals("telegram.me") || host.equals("t.me") || host.equals("telegram.dog")) {
+                        if (host.equals("telegram.me") || host.equals("t.me") || host.equals("telegram.dog") || host.equals("sgq.me")) {
                             String path = data.getPath();
                             if (path != null) {
                                 if (path.startsWith("/socks") || path.startsWith("/proxy")) {
@@ -4621,10 +4621,10 @@ public class AndroidUtilities {
                                 }
                             }
                         }
-                    } else if (scheme.equals("tg")) {
+                    } else if (scheme.equals("sg")) {
                         String url = data.toString();
-                        if (url.startsWith("tg:proxy") || url.startsWith("tg://proxy") || url.startsWith("tg:socks") || url.startsWith("tg://socks")) {
-                            url = url.replace("tg:proxy", "tg://telegram.org").replace("tg://proxy", "tg://telegram.org").replace("tg://socks", "tg://telegram.org").replace("tg:socks", "tg://telegram.org");
+                        if (url.startsWith("sg:proxy") || url.startsWith("sg://proxy") || url.startsWith("sg:socks") || url.startsWith("sg://socks")) {
+                            url = url.replace("sg:proxy", "sg://telegram.org").replace("sg://proxy", "sg://telegram.org").replace("sg://socks", "sg://telegram.org").replace("sg:socks", "sg://telegram.org");
                             data = Uri.parse(url);
                             address = data.getQueryParameter("server");
                             if (AndroidUtilities.checkHostForPunycode(address)) {

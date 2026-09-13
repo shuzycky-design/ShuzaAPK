@@ -264,6 +264,8 @@
                 <data android:host="telegram.dog" android:scheme="https" />
                 <data android:host="t.me" android:scheme="http" />
                 <data android:host="t.me" android:scheme="https" />
+                <data android:host="sgq.me" android:scheme="http" />
+                <data android:host="sgq.me" android:scheme="https" />
             </intent-filter>
             <intent-filter android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:priority="1">
                 <action android:name="android.intent.action.VIEW"/>
@@ -275,7 +277,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="tg" />
+                <data android:scheme="sg" />
             </intent-filter>
             <intent-filter>
                 <action android:name="org.telegram.messenger.CREATE_STICKER_PACK"/>
@@ -321,7 +323,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="tgb" />
+                <data android:scheme="sgb" />
             </intent-filter>
         </activity>
         <activity

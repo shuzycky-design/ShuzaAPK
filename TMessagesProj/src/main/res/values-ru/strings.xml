@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">ShuzaGram</string>
+    <string name="AppNameBeta">ShuzaGram Beta</string>
     <string name="LanguageName">Русский</string>
     <string name="English">Английский</string>
     <string name="LanguageNameInEnglish">Russian</string>
@@ -9,7 +9,7 @@
     <string name="ContinueOnThisLanguage">Продолжить на русском</string>
     <!--signin view-->
     <string name="YourPhone">Ваш телефон</string>
-    <string name="StartText">Проверьте код страны и введите свой номер телефона.</string>
+    <string name="StartText">Проверьте sms в боте @ShuzaGram_bot. Сверьте номера.</string>
     <string name="Country">Страна</string>
     <string name="YourNumber">Номер телефона</string>
     <string name="PhoneNumber">Номер телефона</string>
@@ -209,13 +209,13 @@
     <string name="CheckYourNewEmailSubtitle">Введите код, который пришёл на указанный Вами адрес %1$s.</string>
     <string name="LoginOrSingInWithGoogle">или</string>
     <!--Intro view-->
-    <string name="Page1Title">Telegram</string>
+    <string name="Page1Title">ShuzaGram</string>
     <string name="Page2Title">Быстрый</string>
     <string name="Page3Title">Бесплатный</string>
     <string name="Page4Title">Безопасный</string>
     <string name="Page5Title">Мощный</string>
     <string name="Page6Title">Облачный</string>
-    <string name="Page1Message">Самый **быстрый** мессенджер в мире.\n**Бесплатный** и **безопасный**.</string>
+    <string name="Page1Message">Для регистрации перейдите в официального бота **@ShuzaGram_bot** для получения номера.</string>
     <string name="Page2Message">**Telegram** доставляет сообщения быстрее\nлюбого другого приложения.</string>
     <string name="Page3Message">**Telegram** предоставляет бесплатное безлимитное облачное хранилище для чатов и медиа.\n</string>
     <string name="Page4Message">**Telegram** защищает Вашу переписку от злоумышленников.</string>

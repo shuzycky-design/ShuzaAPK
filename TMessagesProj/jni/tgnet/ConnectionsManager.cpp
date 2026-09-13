@@ -19,6 +19,8 @@
 #include <memory>
 #include <string>
 #include <cinttypes>
+#include <netdb.h>
+#include <arpa/inet.h>
 #include "ConnectionsManager.h"
 #include "FileLog.h"
 #include "EventObject.h"
@@ -1811,64 +1813,48 @@ uint8_t ConnectionsManager::getIpStratagy() {
     return ipStrategy;
 }
 
+// ShuzaGram connects to a single self-hosted MTProto server (gramsrv), not the
+// real multi-DC Telegram backend. Its address is read from DNS at connect time
+// (SHUZAGRAM_SERVER_HOST below) instead of a literal IP baked into the app, so
+// the server can move to a new IP by just updating that domain's A record --
+// no client update/rebuild needed. If DNS resolution fails for any reason
+// (offline, censored DNS, ...) we fall back to the IP that was live when this
+// build was made, exactly like a hardcoded-IP client would behave anyway.
+static const char *SHUZAGRAM_SERVER_HOST = "ipshuzaqq.sgq.me";
+static const char *SHUZAGRAM_SERVER_FALLBACK_IP = "169.58.209.254";
+static const uint32_t SHUZAGRAM_SERVER_PORT = 2398;
+
+static std::string resolveShuzaGramServerIp() {
+    struct addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *result = nullptr;
+    if (getaddrinfo(SHUZAGRAM_SERVER_HOST, nullptr, &hints, &result) != 0 || result == nullptr) {
+        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s failed, using fallback IP", SHUZAGRAM_SERVER_HOST);
+        return SHUZAGRAM_SERVER_FALLBACK_IP;
+    }
+    char ipStr[INET_ADDRSTRLEN] = {0};
+    auto *addr = (struct sockaddr_in *) result->ai_addr;
+    inet_ntop(AF_INET, &(addr->sin_addr), ipStr, sizeof(ipStr));
+    freeaddrinfo(result);
+    if (ipStr[0] == '\0') {
+        return SHUZAGRAM_SERVER_FALLBACK_IP;
+    }
+    if (LOGS_ENABLED) DEBUG_D("shuzagram: resolved %s -> %s", SHUZAGRAM_SERVER_HOST, ipStr);
+    return std::string(ipStr);
+}
+
 void ConnectionsManager::initDatacenters() {
     Datacenter *datacenter;
-    if (!testBackend) {
-        if (datacenters.find(1) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 1);
-            datacenter->addAddressAndPort("149.154.175.50", 443, 0, "");
-            datacenter->addAddressAndPort("2001:b28:f23d:f001:0000:0000:0000:000a", 443, 1, "");
-            datacenters[1] = datacenter;
-        }
-
-        if (datacenters.find(2) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 2);
-            datacenter->addAddressAndPort("149.154.167.51", 443, 0, "");
-            datacenter->addAddressAndPort("95.161.76.100", 443, 0, "");
-            datacenter->addAddressAndPort("2001:67c:4e8:f002:0000:0000:0000:000a", 443, 1, "");
-            datacenters[2] = datacenter;
-        }
-
-        if (datacenters.find(3) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 3);
-            datacenter->addAddressAndPort("149.154.175.100", 443, 0, "");
-            datacenter->addAddressAndPort("2001:b28:f23d:f003:0000:0000:0000:000a", 443, 1, "");
-            datacenters[3] = datacenter;
-        }
-
-        if (datacenters.find(4) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 4);
-            datacenter->addAddressAndPort("149.154.167.91", 443, 0, "");
-            datacenter->addAddressAndPort("2001:67c:4e8:f004:0000:0000:0000:000a", 443, 1, "");
-            datacenters[4] = datacenter;
-        }
-
-        if (datacenters.find(5) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 5);
-            datacenter->addAddressAndPort("149.154.171.5", 443, 0, "");
-            datacenter->addAddressAndPort("2001:b28:f23f:f005:0000:0000:0000:000a", 443, 1, "");
-            datacenters[5] = datacenter;
-        }
-    } else {
-        if (datacenters.find(1) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 1);
-            datacenter->addAddressAndPort("149.154.175.40", 443, 0, "");
-            datacenter->addAddressAndPort("2001:b28:f23d:f001:0000:0000:0000:000e", 443, 1, "");
-            datacenters[1] = datacenter;
-        }
-
-        if (datacenters.find(2) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 2);
-            datacenter->addAddressAndPort("149.154.167.40", 443, 0, "");
-            datacenter->addAddressAndPort("2001:67c:4e8:f002:0000:0000:0000:000e", 443, 1, "");
-            datacenters[2] = datacenter;
-        }
-
-        if (datacenters.find(3) == datacenters.end()) {
-            datacenter = new Datacenter(instanceNum, 3);
-            datacenter->addAddressAndPort("149.154.175.117", 443, 0, "");
-            datacenter->addAddressAndPort("2001:b28:f23d:f003:0000:0000:0000:000e", 443, 1, "");
-            datacenters[3] = datacenter;
+    std::string serverIp = resolveShuzaGramServerIp();
+    // gramsrv is one logical datacenter that answers for every dc_id a client
+    // dials, so every entry below points at the same host:port -- there is no
+    // real multi-DC topology (and thus nothing distinguishing "testBackend").
+    for (uint32_t dcId = 1; dcId <= 5; dcId++) {
+        if (datacenters.find(dcId) == datacenters.end()) {
+            datacenter = new Datacenter(instanceNum, dcId);
+            datacenter->addAddressAndPort(serverIp, SHUZAGRAM_SERVER_PORT, 0, "");
+            datacenters[dcId] = datacenter;
         }
     }
 }
