@@ -267,6 +267,19 @@
                 <data android:host="sgq.me" android:scheme="http" />
                 <data android:host="sgq.me" android:scheme="https" />
             </intent-filter>
+            <!-- ShuzaGram: a separate autoVerify filter scoped to ONLY sgq.me -- Android
+                 verifies every host in an autoVerify filter via that host's own
+                 assetlinks.json, and t.me/telegram.me/telegram.dog above are real
+                 Telegram's domains (no assetlinks.json for this app), which would
+                 otherwise sink verification for the whole filter. sgq.me/.well-known/
+                 assetlinks.json declares this app's package + signing cert. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="sgq.me" android:scheme="http" />
+                <data android:host="sgq.me" android:scheme="https" />
+            </intent-filter>
             <intent-filter android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:priority="1">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT" />
