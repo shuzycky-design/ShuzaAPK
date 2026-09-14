@@ -1815,30 +1815,32 @@ uint8_t ConnectionsManager::getIpStratagy() {
 
 // ShuzaGram connects to a single self-hosted MTProto server (gramsrv), not the
 // real multi-DC Telegram backend. Its address is read from DNS at connect time
-// (SHUZAGRAM_SERVER_HOST below) instead of a literal IP baked into the app, so
-// the server can move to a new IP by just updating that domain's A record --
-// no client update/rebuild needed. If DNS resolution fails for any reason
-// (offline, censored DNS, ...) we fall back to the IP that was live when this
-// build was made, exactly like a hardcoded-IP client would behave anyway.
+// (SHUZAGRAM_SERVER_HOST below) instead of any literal IP baked into the app,
+// so the server can move to a new IP by just updating that domain's A record.
+// Deliberately no fallback IP: if DNS resolution fails, the datacenter is left
+// with no known address rather than silently pinning an old IP that could be
+// wrong or gone -- the app retries DNS the next time it (re)initializes
+// datacenters (network change, reconnect, restart).
 static const char *SHUZAGRAM_SERVER_HOST = "ipshuzaqq.sgq.me";
-static const char *SHUZAGRAM_SERVER_FALLBACK_IP = "169.58.209.254";
 static const uint32_t SHUZAGRAM_SERVER_PORT = 2398;
 
+// Empty string means DNS resolution failed.
 static std::string resolveShuzaGramServerIp() {
     struct addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     struct addrinfo *result = nullptr;
     if (getaddrinfo(SHUZAGRAM_SERVER_HOST, nullptr, &hints, &result) != 0 || result == nullptr) {
-        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s failed, using fallback IP", SHUZAGRAM_SERVER_HOST);
-        return SHUZAGRAM_SERVER_FALLBACK_IP;
+        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s failed", SHUZAGRAM_SERVER_HOST);
+        return "";
     }
     char ipStr[INET_ADDRSTRLEN] = {0};
     auto *addr = (struct sockaddr_in *) result->ai_addr;
     inet_ntop(AF_INET, &(addr->sin_addr), ipStr, sizeof(ipStr));
     freeaddrinfo(result);
     if (ipStr[0] == '\0') {
-        return SHUZAGRAM_SERVER_FALLBACK_IP;
+        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s returned no usable address", SHUZAGRAM_SERVER_HOST);
+        return "";
     }
     if (LOGS_ENABLED) DEBUG_D("shuzagram: resolved %s -> %s", SHUZAGRAM_SERVER_HOST, ipStr);
     return std::string(ipStr);
@@ -1853,7 +1855,9 @@ void ConnectionsManager::initDatacenters() {
     for (uint32_t dcId = 1; dcId <= 5; dcId++) {
         if (datacenters.find(dcId) == datacenters.end()) {
             datacenter = new Datacenter(instanceNum, dcId);
-            datacenter->addAddressAndPort(serverIp, SHUZAGRAM_SERVER_PORT, 0, "");
+            if (!serverIp.empty()) {
+                datacenter->addAddressAndPort(serverIp, SHUZAGRAM_SERVER_PORT, 0, "");
+            }
             datacenters[dcId] = datacenter;
         }
     }
