@@ -2025,9 +2025,18 @@ static std::string resolveShuzaGramServerIp() {
     return "";
 }
 
+// TEMPORARY HOTFIX: the app was crashing on launch with the signed-DNS-TXT
+// path active (root cause not yet isolated -- candidates include res_query
+// behaving unexpectedly on some devices, or something in the hand-rolled DNS
+// message parsing). Until that's diagnosed, connect straight to a hardcoded
+// IP instead of calling resolveShuzaGramServerIp(). The DNS/signature-
+// verification code above is left in place, unused, so this is a one-line
+// revert once the crash is fixed -- it is NOT deleted.
+static const char *SHUZAGRAM_SERVER_IP_HOTFIX = "148.113.240.165";
+
 void ConnectionsManager::initDatacenters() {
     Datacenter *datacenter;
-    std::string serverIp = resolveShuzaGramServerIp();
+    std::string serverIp = SHUZAGRAM_SERVER_IP_HOTFIX;
     // gramsrv is one logical datacenter that answers for every dc_id a client
     // dials, so every entry below points at the same host:port -- there is no
     // real multi-DC topology (and thus nothing distinguishing "testBackend").
