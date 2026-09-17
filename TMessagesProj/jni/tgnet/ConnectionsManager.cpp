@@ -15,6 +15,12 @@
 #include <fcntl.h>
 #include <memory.h>
 #include <openssl/rand.h>
+#include <openssl/rsa.h>
+#include <openssl/sha.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+#include <resolv.h>
+#include <arpa/nameser.h>
 #include <zlib.h>
 #include <memory>
 #include <string>
@@ -1814,36 +1820,209 @@ uint8_t ConnectionsManager::getIpStratagy() {
 }
 
 // ShuzaGram connects to a single self-hosted MTProto server (gramsrv), not the
-// real multi-DC Telegram backend. Its address is read from DNS at connect time
-// (SHUZAGRAM_SERVER_HOST below) instead of any literal IP baked into the app,
-// so the server can move to a new IP by just updating that domain's A record.
-// Deliberately no fallback IP: if DNS resolution fails, the datacenter is left
-// with no known address rather than silently pinning an old IP that could be
-// wrong or gone -- the app retries DNS the next time it (re)initializes
-// datacenters (network change, reconnect, restart).
+// real multi-DC Telegram backend. Its address is read from a signed DNS TXT
+// record at connect time (SHUZAGRAM_SERVER_HOST below) instead of any literal
+// IP baked into the app, so the server can move to a new IP by just updating
+// that domain's TXT record.
+//
+// The TXT value is "v1:<ip>:<port>:<base64 signature>", where the signature
+// is SHA-256("<ip>:<port>") signed with this server's RSA identity private
+// key (RSASSA-PKCS1-v1_5) -- the same keypair whose public half is already
+// embedded below for the MTProto handshake. We verify that signature against
+// SHUZAGRAM_SERVER_PUBKEY_PEM before ever dialing the address it names. That
+// is what makes the lookup tamper-evident, not just DNS-sourced: an attacker
+// who can spoof or poison DNS for SHUZAGRAM_SERVER_HOST still cannot produce
+// a TXT value this check accepts, since they don't hold server_rsa.pem.
+// Generate the record with cmd/signaddr in the gramsrv repo.
+//
+// Deliberately no fallback IP, same as before: if no TXT record passes
+// verification, the datacenter is left with no known address rather than
+// silently pinning an old (or unverified) IP -- the app retries DNS the next
+// time it (re)initializes datacenters (network change, reconnect, restart).
 static const char *SHUZAGRAM_SERVER_HOST = "ipshuzaqq.sgq.me";
 static const uint32_t SHUZAGRAM_SERVER_PORT = 2398;
+static const char *SHUZAGRAM_SERVER_PUBKEY_PEM =
+    "-----BEGIN RSA PUBLIC KEY-----\n"
+    "MIIBCgKCAQEAxF//0M0+/5PzgdNagTX+J+dJgr75ZCTuiG8i4x7YwmJF+jiOGCjm\n"
+    "7X7BLCaMc1+hOZYDL3+Gvle/AKykW1qouaCJMVx/H+2l8LFXLelZ2PLawTb8A7Bl\n"
+    "TqWzL3db5BugMNWziL9TuhR8In1bwKY07QVpR9in5zjAsAGLBk+mGt0DnVyMf1Xo\n"
+    "p2lLCFNmm0F4ykcAeaLCCIPbGWddliLY8xEEhI4GO2l1U3kZMwIOdOnAGJFtgUAo\n"
+    "Te+FHR6F1s9adCVZB1teL/hf9R+WmekJwygVz0MYEH7y6U49T45+/W7OF6X6g0W0\n"
+    "j1uSSrsY4qN7twxbTad9zdGZ7ys+9v+PuQIDAQAB\n"
+    "-----END RSA PUBLIC KEY-----\n";
 
-// Empty string means DNS resolution failed.
+// Hand-rolled rather than OpenSSL's BIO_f_base64: BoringSSL (which this
+// project links, not stock OpenSSL) dropped the BIO filter API that
+// implements, so it's unavailable at link time.
+static int base64DecodeChar(unsigned char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static unsigned char *base64DecodeAlloc(const std::string &in, int &outLen) {
+    outLen = 0;
+    if (in.empty() || in.size() % 4 != 0) return nullptr;
+    auto *buf = new unsigned char[in.size() / 4 * 3];
+    int o = 0;
+    for (size_t i = 0; i < in.size(); i += 4) {
+        int pad = (in[i + 2] == '=') + (in[i + 3] == '=');
+        int vals[4];
+        for (int j = 0; j < 4; j++) {
+            unsigned char c = in[i + j];
+            if (c == '=') {
+                vals[j] = 0;
+                continue;
+            }
+            vals[j] = base64DecodeChar(c);
+            if (vals[j] < 0) {
+                delete[] buf;
+                return nullptr;
+            }
+        }
+        uint32_t chunk = (vals[0] << 18) | (vals[1] << 12) | (vals[2] << 6) | vals[3];
+        buf[o++] = (unsigned char) (chunk >> 16);
+        if (pad < 2) buf[o++] = (unsigned char) (chunk >> 8);
+        if (pad < 1) buf[o++] = (unsigned char) chunk;
+    }
+    outLen = o;
+    return buf;
+}
+
+// Verifies one candidate TXT string against SHUZAGRAM_SERVER_PUBKEY_PEM.
+// Returns the verified "ip" on success, or an empty string if the record is
+// malformed or the signature doesn't check out.
+static std::string verifyShuzaGramAttestation(const std::string &txt) {
+    // Expected shape: v1:<ip>:<port>:<base64 sig>
+    if (txt.rfind("v1:", 0) != 0) {
+        return "";
+    }
+    size_t ipStart = 3;
+    size_t ipEnd = txt.find(':', ipStart);
+    if (ipEnd == std::string::npos) return "";
+    size_t portEnd = txt.find(':', ipEnd + 1);
+    if (portEnd == std::string::npos) return "";
+    std::string ip = txt.substr(ipStart, ipEnd - ipStart);
+    std::string portStr = txt.substr(ipEnd + 1, portEnd - ipEnd - 1);
+    std::string sigB64 = txt.substr(portEnd + 1);
+    if (ip.empty() || portStr != std::to_string(SHUZAGRAM_SERVER_PORT)) {
+        // Port is pinned in the app itself (SHUZAGRAM_SERVER_PORT), not
+        // trusted from DNS -- a record naming a different port is rejected
+        // outright rather than silently redirected to it.
+        return "";
+    }
+
+    BIO *bio = BIO_new_mem_buf(SHUZAGRAM_SERVER_PUBKEY_PEM, -1);
+    if (bio == nullptr) return "";
+    RSA *rsa = PEM_read_bio_RSAPublicKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (rsa == nullptr) return "";
+
+    std::string signedPayload = ip + ":" + portStr;
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char *) signedPayload.data(), signedPayload.size(), digest);
+
+    int decodedLen = 0;
+    std::unique_ptr<unsigned char[]> sig(base64DecodeAlloc(sigB64, decodedLen));
+    bool ok = sig != nullptr && decodedLen > 0 &&
+        RSA_verify(NID_sha256, digest, SHA256_DIGEST_LENGTH, sig.get(), (unsigned int) decodedLen, rsa) == 1;
+    RSA_free(rsa);
+    if (!ok) {
+        if (LOGS_ENABLED) DEBUG_D("shuzagram: TXT signature verification failed for %s", ip.c_str());
+        return "";
+    }
+    return ip;
+}
+
+// Advances *pos past one DNS NAME field (RFC1035 4.1.4), following at most
+// one compression pointer hop (sufficient for the simple responses a
+// recursive resolver gives us here; answer NAMEs are typically a single
+// pointer back to the question). Returns false on a malformed/truncated
+// name so the caller can bail out of the whole message rather than read out
+// of bounds.
+static bool skipDnsName(const unsigned char *msg, int msgLen, int &pos) {
+    int guard = 0;
+    while (pos < msgLen && guard++ < 128) {
+        int b = msg[pos];
+        if (b == 0) {
+            pos++;
+            return true;
+        }
+        if ((b & 0xC0) == 0xC0) {
+            // Compression pointer: 2 bytes total, then done (the pointed-to
+            // name is not needed -- we only ever skip NAME fields here).
+            if (pos + 2 > msgLen) return false;
+            pos += 2;
+            return true;
+        }
+        // Regular length-prefixed label.
+        pos += 1 + b;
+        if (pos > msgLen) return false;
+    }
+    return false;
+}
+
+// Resolves and verifies the TXT record for SHUZAGRAM_SERVER_HOST. Returns
+// the verified IP, or an empty string if no acceptable record was found --
+// callers must NOT fall back to any other address on empty.
+//
+// Parses the raw DNS response by hand rather than via <resolv.h>'s
+// ns_initparse/ns_parserr: those BIND-derived message-parsing helpers exist
+// on glibc but are not part of Android's bionic libc, even though res_query
+// itself is.
 static std::string resolveShuzaGramServerIp() {
-    struct addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo *result = nullptr;
-    if (getaddrinfo(SHUZAGRAM_SERVER_HOST, nullptr, &hints, &result) != 0 || result == nullptr) {
-        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s failed", SHUZAGRAM_SERVER_HOST);
+    unsigned char msg[4096];
+    int msgLen = res_query(SHUZAGRAM_SERVER_HOST, ns_c_in, ns_t_txt, msg, sizeof(msg));
+    if (msgLen < 12) {
+        if (LOGS_ENABLED) DEBUG_D("shuzagram: TXT lookup of %s failed", SHUZAGRAM_SERVER_HOST);
         return "";
     }
-    char ipStr[INET_ADDRSTRLEN] = {0};
-    auto *addr = (struct sockaddr_in *) result->ai_addr;
-    inet_ntop(AF_INET, &(addr->sin_addr), ipStr, sizeof(ipStr));
-    freeaddrinfo(result);
-    if (ipStr[0] == '\0') {
-        if (LOGS_ENABLED) DEBUG_D("shuzagram: DNS lookup of %s returned no usable address", SHUZAGRAM_SERVER_HOST);
-        return "";
+
+    int qdcount = (msg[4] << 8) | msg[5];
+    int ancount = (msg[6] << 8) | msg[7];
+    int pos = 12;
+
+    for (int i = 0; i < qdcount; i++) {
+        if (!skipDnsName(msg, msgLen, pos)) return "";
+        pos += 4; // QTYPE + QCLASS
+        if (pos > msgLen) return "";
     }
-    if (LOGS_ENABLED) DEBUG_D("shuzagram: resolved %s -> %s", SHUZAGRAM_SERVER_HOST, ipStr);
-    return std::string(ipStr);
+
+    for (int i = 0; i < ancount; i++) {
+        if (!skipDnsName(msg, msgLen, pos)) return "";
+        if (pos + 10 > msgLen) return "";
+        int type = (msg[pos] << 8) | msg[pos + 1];
+        int rdlength = (msg[pos + 8] << 8) | msg[pos + 9];
+        pos += 10; // TYPE(2) + CLASS(2) + TTL(4) + RDLENGTH(2)
+        if (pos + rdlength > msgLen) return "";
+
+        if (type == ns_t_txt) {
+            // TXT RDATA is one or more length-prefixed character-strings
+            // (RFC1035 3.3.14); a long attestation is split across several
+            // by whatever authored the zone file, so reassemble them here.
+            std::string txt;
+            int rp = pos;
+            int rend = pos + rdlength;
+            while (rp < rend) {
+                int seglen = msg[rp];
+                rp++;
+                if (rp + seglen > rend) break;
+                txt.append((const char *) (msg + rp), seglen);
+                rp += seglen;
+            }
+            std::string verifiedIp = verifyShuzaGramAttestation(txt);
+            if (!verifiedIp.empty()) {
+                if (LOGS_ENABLED) DEBUG_D("shuzagram: verified TXT record, using %s", verifiedIp.c_str());
+                return verifiedIp;
+            }
+        }
+        pos += rdlength;
+    }
+    if (LOGS_ENABLED) DEBUG_D("shuzagram: no TXT record on %s passed signature verification", SHUZAGRAM_SERVER_HOST);
+    return "";
 }
 
 void ConnectionsManager::initDatacenters() {
